@@ -52,6 +52,9 @@ public class ValueCollectors {
       AbstractTypeBag valTypeBag = AbstractTypeBag.of(valueLabel.orElse(null));
       SetMultimap.Transient<K, V> map =
           SetMultimap.Transient.of(equivalenceEqualityComparator);
+      SetMultimap.Transient<V, K> mapInverse =
+          SetMultimap.Transient.of(equivalenceEqualityComparator);
+
     }
 
     /** extract key/value from type {@code T} and insert into multimap */
@@ -62,12 +65,13 @@ public class ValueCollectors {
       if (struct.map.__insert(key, val)) {
         struct.keyTypeBag = struct.keyTypeBag.increase(key.getType());
         struct.valTypeBag = struct.valTypeBag.increase(val.getType());
+        struct.mapInverse.__insert(val, key);
       }
     };
 
     return new DefaultCollector<>(SetMultimapStruct::new, accumulator,
         unsupportedCombiner(), struct -> PersistentSetFactory.from(struct.keyTypeBag,
-            struct.valTypeBag, (SetMultimap.Immutable<IValue, IValue>) struct.map.freeze()),
+            struct.valTypeBag, (SetMultimap.Immutable<IValue, IValue>) struct.map.freeze(), (SetMultimap.Immutable<IValue, IValue>) struct.mapInverse.freeze()),
         UNORDERED);
   }
 

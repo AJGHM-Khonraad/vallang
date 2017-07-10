@@ -23,6 +23,7 @@ import java.util.stream.StreamSupport;
 import io.usethesource.capsule.Set;
 import io.usethesource.capsule.Set.Immutable;
 import io.usethesource.capsule.SetMultimap;
+import io.usethesource.capsule.SetMultimap.Transient;
 import io.usethesource.capsule.util.ArrayUtilsInt;
 import io.usethesource.capsule.util.stream.CapsuleCollectors;
 import io.usethesource.vallang.ISet;
@@ -47,6 +48,7 @@ public final class PersistentHashIndexedBinaryRelation extends AbstractSet {
   private final AbstractTypeBag keyTypeBag;
   private final AbstractTypeBag valTypeBag;
   private final SetMultimap.Immutable<IValue, IValue> content;
+  private final SetMultimap.Immutable<IValue, IValue> inverseContent;
 
   /**
    * Construction of persistent indexed binary relation with multi-map backend.
@@ -58,10 +60,11 @@ public final class PersistentHashIndexedBinaryRelation extends AbstractSet {
    * @param content immutable multi-map
    */
   PersistentHashIndexedBinaryRelation(AbstractTypeBag keyTypeBag, AbstractTypeBag valTypeBag,
-      SetMultimap.Immutable<IValue, IValue> content) {
+      SetMultimap.Immutable<IValue, IValue> content, SetMultimap.Immutable<IValue, IValue> inverseContent) {
     this.keyTypeBag = Objects.requireNonNull(keyTypeBag);
     this.valTypeBag = Objects.requireNonNull(valTypeBag);
     this.content = Objects.requireNonNull(content);
+    this.inverseContent = Objects.requireNonNull(inverseContent);
 
     assert USE_MULTIMAP_BINARY_RELATIONS
         && isTupleOfArityTwo.test(getTypeFactory().tupleType(keyTypeBag.lub(), valTypeBag.lub()));
@@ -146,11 +149,13 @@ public final class PersistentHashIndexedBinaryRelation extends AbstractSet {
     if (content == contentNew) {
       return this;
     }
+    final SetMultimap.Immutable<IValue, IValue> inverseNew = inverseContent.__insert(val, key);
+
 
     final AbstractTypeBag keyTypeBagNew = keyTypeBag.increase(key.getType());
     final AbstractTypeBag valTypeBagNew = valTypeBag.increase(val.getType());
 
-    return PersistentSetFactory.from(keyTypeBagNew, valTypeBagNew, contentNew);
+    return PersistentSetFactory.from(keyTypeBagNew, valTypeBagNew, contentNew, inverseNew);
   }
 
   @Override
@@ -168,11 +173,13 @@ public final class PersistentHashIndexedBinaryRelation extends AbstractSet {
     if (content == contentNew) {
       return this;
     }
+    final SetMultimap.Immutable<IValue, IValue> inverseNew = inverseContent.__remove(val, key);
+
 
     final AbstractTypeBag keyTypeBagNew = keyTypeBag.decrease(key.getType());
     final AbstractTypeBag valTypeBagNew = valTypeBag.decrease(val.getType());
 
-    return PersistentSetFactory.from(keyTypeBagNew, valTypeBagNew, contentNew);
+    return PersistentSetFactory.from(keyTypeBagNew, valTypeBagNew, contentNew, inverseNew);
   }
 
   @Override
@@ -357,7 +364,7 @@ public final class PersistentHashIndexedBinaryRelation extends AbstractSet {
       }
 
       if (modified) {
-        return PersistentSetFactory.from(keyTypeBagNew, valTypeBagNew, tmp.freeze());
+        return PersistentSetFactory.from(keyTypeBagNew, valTypeBagNew, tmp.freeze(), createInverse(tmp));
       }
       return def;
     } else {
@@ -365,7 +372,14 @@ public final class PersistentHashIndexedBinaryRelation extends AbstractSet {
     }
   }
 
-  @Override
+  // should be inlined soon, but for now, just do it expensive 
+  private SetMultimap.Immutable<IValue, IValue> createInverse(SetMultimap<IValue, IValue> tmp) {
+      final SetMultimap.Transient<IValue, IValue> builder = SetMultimap.Transient.of(equivalenceEqualityComparator);
+      tmp.entryIterator().forEachRemaining(tuple -> builder.__insert(tuple.getValue(), tuple.getKey()));
+      return builder.freeze();
+}
+
+@Override
   public ISet intersect(ISet other) {
     if (other == this) {
       return this;
@@ -414,7 +428,7 @@ public final class PersistentHashIndexedBinaryRelation extends AbstractSet {
       }
 
       if (modified) {
-        return PersistentSetFactory.from(keyTypeBagNew, valTypeBagNew, tmp.freeze());
+        return PersistentSetFactory.from(keyTypeBagNew, valTypeBagNew, tmp.freeze(), createInverse(tmp));
       }
       return def;
     } else {
@@ -461,7 +475,7 @@ public final class PersistentHashIndexedBinaryRelation extends AbstractSet {
       }
 
       if (modified) {
-        return PersistentSetFactory.from(keyTypeBagNew, valTypeBagNew, tmp.freeze());
+        return PersistentSetFactory.from(keyTypeBagNew, valTypeBagNew, tmp.freeze(), createInverse(tmp));
       }
       return def;
     } else {
@@ -539,7 +553,7 @@ public final class PersistentHashIndexedBinaryRelation extends AbstractSet {
         final AbstractTypeBag valTypeBag = data.entrySet().stream().map(Map.Entry::getValue)
             .map(IValue::getType).collect(AbstractTypeBag.toTypeBag());
 
-        return PersistentSetFactory.from(keyTypeBag, valTypeBag, data);
+        return PersistentSetFactory.from(keyTypeBag, valTypeBag, data, createInverse(data));
       }
 
       @Override
@@ -573,15 +587,7 @@ public final class PersistentHashIndexedBinaryRelation extends AbstractSet {
 
         // TODO: replace by `inverse` API of subsequent capsule release
         if (Arrays.equals(fieldIndexes, ArrayUtilsInt.arrayOfInt(1, 0))) {
-          // return SetFunctions.project(getValueFactory(), thisSet, fieldIndexes);
-
-          final SetMultimap.Transient<IValue, IValue> builder =
-              SetMultimap.Transient.of(equivalenceEqualityComparator);
-
-          content.entryIterator().forEachRemaining(
-              tuple -> builder.__insert(tuple.getValue(), tuple.getKey()));
-
-          return PersistentSetFactory.from(valTypeBag, keyTypeBag, builder.freeze());
+            return PersistentSetFactory.from(valTypeBag, keyTypeBag, inverseContent, content);
         }
 
         throw new IllegalStateException("Binary relation patterns exhausted.");

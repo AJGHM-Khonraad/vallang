@@ -98,6 +98,7 @@ public class SetWriter implements ISetWriter {
       AbstractTypeBag valTypeBag = AbstractTypeBag.of();
       @SuppressWarnings("deprecation")
       SetMultimap.Transient<IValue, IValue> map = SetMultimap.Transient.of(equivalenceEqualityComparator);
+      SetMultimap.Transient<IValue, IValue> mapInverse = SetMultimap.Transient.of(equivalenceEqualityComparator);
 
       @Override
       public void put(IValue element, Type elementType) {
@@ -106,12 +107,13 @@ public class SetWriter implements ISetWriter {
           if (map.__insert(key, value)) {
               keyTypeBag = keyTypeBag.increase(elementType.getFieldType(0));
               valTypeBag = valTypeBag.increase(elementType.getFieldType(1));
+              mapInverse.__insert(value, key);
           }
       }
       
       @Override
       public ISet done() {
-          return PersistentSetFactory.from(keyTypeBag, valTypeBag, map.freeze());
+          return PersistentSetFactory.from(keyTypeBag, valTypeBag, map.freeze(), mapInverse.freeze());
       }
 
   }

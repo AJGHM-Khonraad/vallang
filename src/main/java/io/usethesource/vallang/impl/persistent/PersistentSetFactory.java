@@ -57,14 +57,14 @@ public class PersistentSetFactory {
    * @return appropriate {@link ISet} based on data and type
    */
   static final ISet from(final AbstractTypeBag keyTypeBag, final AbstractTypeBag valTypeBag,
-                         final SetMultimap.Immutable<IValue, IValue> content) {
+                         final SetMultimap.Immutable<IValue, IValue> content, final SetMultimap.Immutable<IValue, IValue> inverseContent) {
 
     if (content.isEmpty()) {
       return EmptySet.EMPTY_SET;
     }
 
     // keep current representation
-    return new PersistentHashIndexedBinaryRelation(keyTypeBag, valTypeBag, content);
+    return new PersistentHashIndexedBinaryRelation(keyTypeBag, valTypeBag, content, inverseContent);
   }
 
   /**
